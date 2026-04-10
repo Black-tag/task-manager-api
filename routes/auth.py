@@ -1,11 +1,22 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import create_access_token, create_refresh_token
+from marshmallow import ValidationError
 
-from errors import api_error, validation_error
+from errors import api_error, validation_error_from_messages
 from models import User, bcrypt, db
-from validation import get_json_body, require_str, valid_email
+from routes.models import (
+    AuthTokensResponseSchema,
+    LoginRequestSchema,
+    RegisterRequestSchema,
+    UserResponseSchema,
+)
+from validation import get_json_body
 
 auth_bp = Blueprint("auth", __name__)
+register_request_schema = RegisterRequestSchema()
+login_request_schema = LoginRequestSchema()
+user_response_schema = UserResponseSchema()
+auth_tokens_response_schema = AuthTokensResponseSchema()
 
 
 @auth_bp.route("/register", methods=["POST"])
@@ -14,33 +25,25 @@ def register():
     if err:
         return err
 
-    name, msg = require_str(data, "name", max_len=100)
-    if msg:
-        return validation_error(msg)
+    try:
+        payload = register_request_schema.load(data)
+    except ValidationError as err:
+        return validation_error_from_messages(err.messages)
 
-    email_raw, msg = require_str(data, "email", max_len=100)
-    if msg:
-        return validation_error(msg)
-    email_norm = email_raw.lower()
-    if not valid_email(email_norm):
-        return validation_error("email is invalid")
-
-    password, msg = require_str(data, "password", max_len=72)
-    if msg:
-        return validation_error(msg)
+    email_norm = payload["email"].strip().lower()
 
     if User.query.filter_by(email=email_norm).first():
         return api_error("ConflictError", "email is already registered", 409)
 
     user = User(
-        name=name,
+        name=payload["name"].strip(),
         email=email_norm,
-        password_hash=bcrypt.generate_password_hash(password).decode("utf-8"),
+        password_hash=bcrypt.generate_password_hash(payload["password"]).decode("utf-8"),
     )
     db.session.add(user)
     db.session.commit()
 
-    return jsonify({"id": user.id, "name": user.name, "email": user.email}), 201
+    return jsonify(user_response_schema.dump(user)), 201
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -49,37 +52,24 @@ def login():
     if err:
         return err
 
-    email_raw, msg = require_str(data, "email", max_len=100)
-    if msg:
-        return validation_error(msg)
-    email_norm = email_raw.lower()
-    if not valid_email(email_norm):
-        return validation_error("email is invalid")
+    try:
+        payload = login_request_schema.load(data)
+    except ValidationError as err:
+        return validation_error_from_messages(err.messages)
 
-    password, msg = require_str(data, "password", max_len=72)
-    if msg:
-        return validation_error(msg)
+    email_norm = payload["email"].strip().lower()
 
     user = User.query.filter_by(email=email_norm).first()
-    if not user or not bcrypt.check_password_hash(user.password_hash, password):
+    if not user or not bcrypt.check_password_hash(user.password_hash, payload["password"]):
         return api_error(
             "UnauthorizedError", "invalid email or password", 401
         )
 
     access = create_access_token(identity=str(user.id))
     refresh = create_refresh_token(identity=str(user.id))
-    return (
-        jsonify(
-            access_token=access,
-            refresh_token=refresh,
-            user={
-                "id": user.id,
-                "name": user.name,
-                "email": user.email,
-                "created_time": user.created_time.isoformat()
-                if user.created_time
-                else None,
-            },
-        ),
-        200,
-    )
+    response = {
+        "access_token": access,
+        "refresh_token": refresh,
+        "user": user,
+    }
+    return jsonify(auth_tokens_response_schema.dump(response)), 200
