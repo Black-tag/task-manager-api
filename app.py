@@ -1,20 +1,14 @@
-import os
-
 from flask import Flask
 from flask_jwt_extended import JWTManager
 
+from config import Config
 from models import bcrypt, db
 from routes.auth import auth_bp
 from routes.projects import projects_bp
 from routes.tasks import tasks_bp
 
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = (
-    "postgresql://postgres:postgres@localhost:5432/postgres"
-)
-app.config["JWT_SECRET_KEY"] = os.environ.get(
-    "JWT_SECRET_KEY", "dev-secret-change-me"
-)
+app.config.from_object(Config)
 
 db.init_app(app)
 bcrypt.init_app(app)
@@ -32,5 +26,9 @@ def handle_missing_or_invalid_token(_reason: str):
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    app.run(debug=True)
+    app.run(
+        host=app.config["HOST"],
+        port=app.config["PORT"],
+        debug=app.config["DEBUG"],
+    )
 
