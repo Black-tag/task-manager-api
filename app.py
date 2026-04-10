@@ -6,6 +6,7 @@ from flask_jwt_extended import JWTManager
 from models import bcrypt, db
 from routes.auth import auth_bp
 from routes.projects import projects_bp
+from routes.tasks import tasks_bp
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = (
@@ -20,6 +21,7 @@ bcrypt.init_app(app)
 jwt = JWTManager(app)
 app.register_blueprint(auth_bp, url_prefix="/auth")
 app.register_blueprint(projects_bp, url_prefix="/projects")
+app.register_blueprint(tasks_bp)
 
 
 @jwt.unauthorized_loader
