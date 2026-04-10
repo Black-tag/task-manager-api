@@ -68,4 +68,18 @@ def login():
 
     access = create_access_token(identity=str(user.id))
     refresh = create_refresh_token(identity=str(user.id))
-    return jsonify(access_token=access, refresh_token=refresh), 200
+    return (
+        jsonify(
+            access_token=access,
+            refresh_token=refresh,
+            user={
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "created_time": user.created_time.isoformat()
+                if user.created_time
+                else None,
+            },
+        ),
+        200,
+    )
